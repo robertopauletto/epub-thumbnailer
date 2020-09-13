@@ -45,11 +45,7 @@ class EpubThumbnailerException(Exception):
     pass
 
 
-def get_cover_from_manifest(epub: BinaryIO) -> Union[None, str]:
-    """
-    :param epub: ebook stream
-    :return: the image path or None if not found
-     """
+def _read_root(epub: BinaryIO) -> tuple:
     # open the main container
     container = epub.open("META-INF/container.xml")
     container_root = minidom.parseString(container.read())
@@ -61,10 +57,37 @@ def get_cover_from_manifest(epub: BinaryIO) -> Union[None, str]:
     # open the rootfile
     rootfile = epub.open(rootfile_path)
     rootfile_root = minidom.parseString(rootfile.read())
+    return rootfile_root, rootfile_path
+
+
+def get_metadata(input_file: str) -> dict:
+    with open(input_file, "rb") as fh:
+        epub = zipfile.ZipFile(BytesIO(fh.read()), "r")
+
+    rootfile_root, _ = _read_root(epub)
+
+    # gather metadata
+    diz = dict()
+    for meta in rootfile_root.getElementsByTagName("meta"):
+        inner = meta.firstChild
+        prop = meta.getAttribute("property")
+        if inner and prop:
+            diz[prop.split(':')[1].strip()] = inner.data
+
+    return diz
+
+
+def get_cover_from_manifest(epub: BinaryIO) -> Union[None, str]:
+    """
+    :param epub: ebook stream
+    :return: the image path or None if not found
+     """
+    rootfile_root, rootfile_path = _read_root(epub)
 
     # find possible cover in meta
     cover_id = None
     for meta in rootfile_root.getElementsByTagName("meta"):
+
         if meta.getAttribute("name") == "cover":
             cover_id = meta.getAttribute("content")
             break
@@ -208,7 +231,7 @@ def get_cover(filein, fileimg=None, size=None) -> Union[str, None]:
             if extract_cover(cover_path, epub, size, output_file):
                 return output_file
         except Exception as ex:
-            prompt = f"Error getting cover using {stratey.__name__}:\n"\
+            prompt = f"Error getting cover using {strategy.__name__}:\n"\
                      f"{ex}"
             raise EpubThumbnailerException(prompt)
 
@@ -218,4 +241,6 @@ if __name__ == '__main__':
             r'Essential SQLAlchemy Mapping Python to databases ' \
             r'by Jason Myers, Rick Copeland (z-lib.org).epub'
     get_cover(ebook, fileimg='./test1.png', size=500)
+    from pprint import pprint
+    pprint(get_metadata(ebook))
     # print(_parse_size('x1 2200'))
